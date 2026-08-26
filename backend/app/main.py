@@ -8,11 +8,14 @@ Run with:
 from inside the backend/ directory.
 """
 
+import asyncio
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database.database import init_db
 from app.api import video_routes, event_routes
+from app.services.connection_manager import manager
 
 app = FastAPI(title="Sanitation Monitoring API")
 
@@ -31,8 +34,12 @@ app.include_router(event_routes.router)
 
 
 @app.on_event("startup")
-def on_startup():
+async def on_startup():
     init_db()
+    # process_video() runs in a worker thread (BackgroundTasks), so the
+    # connection manager needs a reference to the main event loop to be
+    # able to schedule WebSocket sends from that thread.
+    manager.set_loop(asyncio.get_event_loop())
 
 
 @app.get("/")

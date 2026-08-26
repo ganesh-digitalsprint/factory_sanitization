@@ -9,9 +9,18 @@ import shutil
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException
+from fastapi import (
+    APIRouter,
+    UploadFile,
+    File,
+    BackgroundTasks,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect,
+)
 
 from app.services.video_processor import process_video, JOB_STATUS
+from app.services.connection_manager import manager
 
 router = APIRouter(prefix="/videos", tags=["videos"])
 
@@ -42,3 +51,23 @@ async def get_job_status(job_id: str):
     if status is None:
         raise HTTPException(status_code=404, detail="job_id not found")
     return {"job_id": job_id, **status}
+
+
+@router.websocket("/{session_id}/stream")
+async def video_stream(websocket: WebSocket, session_id: str):
+    """
+    Live channel for one processing session. The video itself is NOT sent
+    over this socket - React plays the uploaded file directly via <video>.
+    This only carries AI results: track_id + bbox + zone per frame, plus
+    zone-change / missed-step events, as process_video() produces them.
+    """
+    await manager.connect(session_id, websocket)
+    await websocket.send_json({"type": "test", "message": "WebSocket connected"})
+
+    try:
+        # We don't expect the client to send anything meaningful back, but
+        # we still need to await something to detect disconnects promptly.
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(session_id, websocket)
