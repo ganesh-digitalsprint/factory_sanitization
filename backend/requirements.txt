@@ -3,4 +3,12 @@ uvicorn[standard]
 python-multipart
 sqlalchemy
 opencv-python
-numpy
+numpy<2.2
+
+# --- Person tracking (tracker_service.py: RealTrackerService) --------
+ultralytics
+supervision
+torch
+torchvision
+gdown
+git+https://github.com/KaiyangZhou/deep-person-reid.git
