@@ -1,0 +1,32 @@
+{
+    "ENTRY_ZONE": [
+        [100, 200],
+        [300, 200],
+        [350, 500],
+        [100, 500]
+    ],
+
+    "CUPBOARD_INTERACTION_ZONE": [
+        [250, 350],
+        [550, 350],
+        [550, 600],
+        [250, 600]
+    ],
+
+    "SLIPPER_ZONE": [
+        [500, 400],
+        [800, 400],
+        [800, 650],
+        [500, 650]
+    ],
+
+    "VACUUM_ZONE": [],
+
+    "HAND_WASH_ZONE": [],
+
+    "HAND_DRYER_ZONE": [],
+
+    "ACCESS_BUTTON_ZONE": [],
+
+    "PRODUCTION_ENTRY_ZONE": []
+}

@@ -1,0 +1,163 @@
+# ==============================
+# Python
+# ==============================
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Python compiled files
+*.so
+
+# ==============================
+# Virtual Environments
+# ==============================
+
+venv/
+.venv/
+env/
+.env/
+ENV/
+env.bak/
+venv.bak/
+
+# ==============================
+# Environment / Secrets
+# ==============================
+
+.env
+.env.*
+!.env.example
+
+# ==============================
+# FastAPI / Uvicorn
+# ==============================
+
+*.log
+logs/
+*.pid
+
+# ==============================
+# Testing
+# ==============================
+
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.cache/
+hypothesis/
+*.cover
+
+# ==============================
+# Build / Packaging
+# ==============================
+
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# ==============================
+# Jupyter Notebook
+# ==============================
+
+.ipynb_checkpoints/
+
+# ==============================
+# Type Checking / Linters
+# ==============================
+
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+.ruff_cache/
+
+# ==============================
+# IDEs / Editors
+# ==============================
+
+.vscode/
+.idea/
+*.iml
+
+# ==============================
+# OS Files
+# ==============================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# ==============================
+# Temporary Files
+# ==============================
+
+*.tmp
+*.temp
+*.swp
+*.swo
+*.bak
+
+# ==============================
+# Database / Local Data
+# ==============================
+
+*.sqlite
+*.sqlite3
+*.db
+
+# ==============================
+# Coverage
+# ==============================
+
+coverage.xml
+*.cover
+
+# ==============================
+# Docker
+# ==============================
+
+.dockerignore
+
+# ==============================
+# Local uploads / generated files
+# ==============================
+
+uploads/
+output/
+outputs/
+tmp/
+temp/
+
+# ==============================
+# Secrets / Certificates
+# ==============================
+
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# ==============================
+# Local configuration
+# ==============================
+
+local/
+.local/
