@@ -63,17 +63,17 @@ def process_video(session_id: str, video_path: str, use_mock_tracker: bool = Tru
     except Exception as e:
         logger.warning(f"[Session {session_id}] Could not inspect video properties: {e}")
 
-    SESSION_STORE[session_id] = {
-        "session_id": session_id,
-        "video_path": video_path,
-        "status": "PROCESSING",
-        "progress": 0.0,
-        "current_frame": 0,
-        "total_frames": total_frames,
-        "fps": fps,
-        "persons_detected": 0,
-        "events_detected": 0,
-    }
+    SESSION_STORE[session_id].update({
+    "status": "PROCESSING",
+    "progress": 0.0,
+    "current_frame": 0,
+    "current_timestamp": 0.0,
+    "total_frames": total_frames,
+    "fps": fps,
+    "processing_fps": 0.0,
+    "persons_detected": 0,
+    "events_detected": 0,
+    })
 
     # Signal live listeners that processing has started
     manager.send(session_id, {

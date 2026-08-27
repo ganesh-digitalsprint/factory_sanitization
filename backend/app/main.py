@@ -33,11 +33,6 @@ app.add_middleware(
 app.include_router(video_routes.router, prefix="/api/v1")
 app.include_router(event_routes.router, prefix="/api/v1")
 
-# Legacy route aliases (/videos/... and /events/...)
-app.include_router(video_routes.router)
-app.include_router(event_routes.router)
-
-
 @app.on_event("startup")
 async def on_startup():
     init_db()
