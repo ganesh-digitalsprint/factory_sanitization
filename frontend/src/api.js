@@ -3,7 +3,7 @@
 // /api/* to http://localhost:8000 (see vite.config.js, ws: true), so
 // this file never needs to know the backend's real host.
 
-const BASE = "/api";
+const BASE = "http://localhost:8000";
 
 export async function uploadVideo(file) {
   const formData = new FormData();
@@ -38,8 +38,10 @@ export async function getEvents(jobId) {
  * or when a new video is loaded).
  */
 export function connectProcessingStream(jobId, { onOpen, onStatus, onFrameResult, onEvent, onError, onClose } = {}) {
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const ws = new WebSocket(`${protocol}//${window.location.host}${BASE}/videos/${jobId}/stream`);
+  const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  // Use backend host (localhost:8000) for WebSocket connection
+  const wsUrl = `${wsProtocol}//localhost:8000/videos/${jobId}/stream`;
+  const ws = new WebSocket(wsUrl);
 
   ws.onopen = () => onOpen?.();
 
@@ -53,7 +55,15 @@ export function connectProcessingStream(jobId, { onOpen, onStatus, onFrameResult
 
     switch (data.type) {
       case "test":
+      case "processing_started":
         onOpen?.(data);
+        if (data.status) onStatus?.(data);
+        break;
+      case "processing_completed":
+        onStatus?.({ ...data, status: "COMPLETED" });
+        break;
+      case "processing_error":
+        onStatus?.({ ...data, status: "FAILED", error: data.message });
         break;
       case "status":
         onStatus?.(data);

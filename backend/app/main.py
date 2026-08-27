@@ -29,6 +29,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Primary API v1 routes
+app.include_router(video_routes.router, prefix="/api/v1")
+app.include_router(event_routes.router, prefix="/api/v1")
+
+# Legacy route aliases (/videos/... and /events/...)
 app.include_router(video_routes.router)
 app.include_router(event_routes.router)
 

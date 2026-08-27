@@ -54,12 +54,13 @@ export default function App() {
     resetLiveState();
 
     try {
-      const { job_id } = await uploadVideo(file);
+      const response = await uploadVideo(file);
+      const jobId = response.session_id || response.job_id;
 
       // Open the live results channel BEFORE (or right after) processing
       // starts on the backend - the server buffers nothing, so if we
       // connect late we simply miss earlier frames, same as a real live feed.
-      closeStreamRef.current = connectProcessingStream(job_id, {
+      closeStreamRef.current = connectProcessingStream(jobId, {
         onOpen: () => setWsConnected(true),
 
         onStatus: (msg) => {
