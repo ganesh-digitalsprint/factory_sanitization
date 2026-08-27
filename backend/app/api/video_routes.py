@@ -1,26 +1,27 @@
 """
 video_routes.py
 
-POST /videos/upload   - upload a video, kick off background processing
-GET  /videos/{job_id} - check the status of a processing job
+POST /videos/upload          - upload a video, kick off background processing
+GET  /videos/{job_id}        - check the status of a processing job
+GET  /videos/{job_id}/tracks - raw per-frame tracker output for that job,
+                                 in the exact shape RealTrackerService
+                                 produces:
+                                 {"frame_number": 1250, "timestamp": 41.67,
+                                  "tracks": [{"track_id": 101,
+                                              "class_name": "person",
+                                              "bbox": [320, 210, 470, 700],
+                                              "confidence": 0.91}]}
 """
 
+import json
 import shutil
 import uuid
 from pathlib import Path
+from typing import Optional
 
-from fastapi import (
-    APIRouter,
-    UploadFile,
-    File,
-    BackgroundTasks,
-    HTTPException,
-    WebSocket,
-    WebSocketDisconnect,
-)
+from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException
 
-from app.services.video_processor import process_video, JOB_STATUS
-from app.services.connection_manager import manager
+from app.services.video_processor import process_video, JOB_STATUS, get_tracks_path
 
 router = APIRouter(prefix="/videos", tags=["videos"])
 
@@ -38,8 +39,8 @@ async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = Fil
 
     JOB_STATUS[job_id] = {"status": "QUEUED"}
 
-    # use_mock_tracker=True until your teammate's real tracker is ready —
-    # flip to False once RealTrackerService is wired up to their model
+    # use_mock_tracker=True until you're ready to run the real YOLO+ByteTrack
+    # pipeline — flip to False to use RealTrackerService.
     background_tasks.add_task(process_video, job_id, str(video_path), True)
 
     return {"job_id": job_id, "status": "QUEUED"}
@@ -53,21 +54,50 @@ async def get_job_status(job_id: str):
     return {"job_id": job_id, **status}
 
 
-@router.websocket("/{session_id}/stream")
-async def video_stream(websocket: WebSocket, session_id: str):
+@router.get("/{job_id}/tracks")
+async def get_job_tracks(
+    job_id: str,
+    frame_number: Optional[int] = None,
+    limit: int = 500,
+    offset: int = 0,
+):
     """
-    Live channel for one processing session. The video itself is NOT sent
-    over this socket - React plays the uploaded file directly via <video>.
-    This only carries AI results: track_id + bbox + zone per frame, plus
-    zone-change / missed-step events, as process_video() produces them.
-    """
-    await manager.connect(session_id, websocket)
-    await websocket.send_json({"type": "test", "message": "WebSocket connected"})
+    Returns the raw per-frame tracker output saved during processing.
 
-    try:
-        # We don't expect the client to send anything meaningful back, but
-        # we still need to await something to detect disconnects promptly.
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        manager.disconnect(session_id, websocket)
+    - No query params: returns up to `limit` frame records starting at `offset`.
+    - `frame_number=<n>`: returns just that one frame's record.
+
+    Each record looks like:
+        {"frame_number": 1250, "timestamp": 41.67,
+         "tracks": [{"track_id": 101, "class_name": "person",
+                     "bbox": [320, 210, 470, 700], "confidence": 0.91}]}
+    """
+    status = JOB_STATUS.get(job_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="job_id not found")
+
+    tracks_path = get_tracks_path(job_id)
+    if not tracks_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="No per-frame track data saved for this job (was save_tracks=False, "
+                   "or is the job still processing?)",
+        )
+
+    if frame_number is not None:
+        with open(tracks_path) as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                record = json.loads(line)
+                if record["frame_number"] == frame_number:
+                    return record
+        raise HTTPException(status_code=404, detail=f"frame_number {frame_number} not found")
+
+    records = []
+    with open(tracks_path) as f:
+        for line in f:
+            if line.strip():
+                records.append(json.loads(line))
+
+    return records[offset: offset + limit]
