@@ -11,4 +11,4 @@ supervision
 torch
 torchvision
 gdown
-git+https://github.com/KaiyangZhou/deep-person-reid.git
+# git+https://github.com/KaiyangZhou/deep-person-reid.git

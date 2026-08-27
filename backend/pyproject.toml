@@ -4,19 +4,18 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
+
 dependencies = [
     "fastapi>=0.141.1",
-    "numpy>=1.26.0,<2.2",
+    "numpy<2.2",
     "opencv-python>=4.9.0.80",
     "python-multipart>=0.0.32",
     "sqlalchemy>=2.0.52",
     "uvicorn[standard]>=0.52.4",
-
-    # --- Person tracking (tracker_service.py: RealTrackerService) -----
+    # Person tracking
     "ultralytics>=8.3.0",
     "supervision>=0.24.0",
     "torch>=2.2.0",
     "torchvision>=0.17.0",
     "gdown>=5.2.0",
-    "torchreid @ git+https://github.com/KaiyangZhou/deep-person-reid.git",
 ]

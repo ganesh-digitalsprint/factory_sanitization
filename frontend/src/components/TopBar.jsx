@@ -17,7 +17,7 @@ export default function TopBar({ jobStatus, wsConnected, onOpenCameraModal }) {
           </svg>
         </span>
         <div>
-          <span className="brand-name">SanitaTrack</span>
+          <span className="brand-name">Sanitation Tracker</span>
           <span className="brand-sub">Sanitation compliance monitoring</span>
         </div>
       </div>
