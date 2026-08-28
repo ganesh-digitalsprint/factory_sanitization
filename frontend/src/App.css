@@ -182,3 +182,12 @@
     border-right-color: var(--border);
   }
 }
+
+.stage-status-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-family: var(--font-mono);
+  color: var(--warning);
+}

@@ -13,19 +13,39 @@ import numpy as np
 
 
 class ZoneEngine:
-    def __init__(self, zones: dict):
+    def __init__(self, zones: dict | list):
         """
-        zones: dict mapping zone_name -> list of [x, y] polygon points.
-               Empty polygons (not yet drawn) are simply skipped.
+        zones: can be either:
+          1. Dict mapping zone_name -> list of [x, y] polygon points
+          2. Dict with {"zones": [{"name": "...", "points": [[x,y],...]}, ...]}
+          3. List of zone dicts [{"name": "...", "points": ...}]
         """
-        self.zones = zones
+        self.zones = self._normalize_zones(zones)
+
+    @staticmethod
+    def _normalize_zones(raw_zones) -> dict:
+        normalized = {}
+        if isinstance(raw_zones, dict):
+            if "zones" in raw_zones and isinstance(raw_zones["zones"], list):
+                for z in raw_zones["zones"]:
+                    if isinstance(z, dict) and "name" in z and "points" in z:
+                        normalized[z["name"]] = z["points"]
+            else:
+                for name, points in raw_zones.items():
+                    if isinstance(points, list):
+                        normalized[name] = points
+        elif isinstance(raw_zones, list):
+            for z in raw_zones:
+                if isinstance(z, dict) and "name" in z and "points" in z:
+                    normalized[z["name"]] = z["points"]
+        return normalized
 
     @classmethod
     def from_json(cls, path: str | Path) -> "ZoneEngine":
         """Convenience constructor: load zones straight from a zones.json file."""
         with open(path, "r") as f:
-            zones = json.load(f)
-        return cls(zones)
+            data = json.load(f)
+        return cls(data)
 
     @staticmethod
     def get_person_point(bbox):
@@ -47,13 +67,18 @@ class ZoneEngine:
         point = self.get_person_point(bbox)
 
         for zone_name, polygon in self.zones.items():
-            if not polygon:
+            if not polygon or not isinstance(polygon, list) or len(polygon) < 3:
                 continue
 
-            polygon_np = np.array(polygon, dtype=np.int32)
-            result = cv2.pointPolygonTest(polygon_np, point, False)
+            try:
+                polygon_np = np.array(polygon, dtype=np.int32)
+                if polygon_np.ndim != 2 or polygon_np.shape[1] != 2:
+                    continue
 
-            if result >= 0:
-                return zone_name
+                result = cv2.pointPolygonTest(polygon_np, point, False)
+                if result >= 0:
+                    return zone_name
+            except Exception:
+                continue
 
         return None

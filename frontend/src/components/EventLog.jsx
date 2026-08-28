@@ -1,3 +1,5 @@
+import { labelForId } from "../utils";
+
 function formatEvent(e) {
   if (e.event_type === "SEQUENCE_COMPLETED") {
     return e.status === "COMPLETED" ? "completed the full sequence" : "finished with a missed step";
@@ -28,10 +30,14 @@ export default function EventLog({ events = [] }) {
             .map((e, i) => (
               <div key={i} className={`log-row ${e.status === "MISSED_STEP" ? "log-row-alert" : ""}`}>
                 <span className="log-frame">
-                  {e.frame_number !== null && e.frame_number !== undefined ? `f.${e.frame_number}` : "—"}
+                  {e.timestamp !== undefined && e.timestamp !== null
+                    ? `t=${e.timestamp}s`
+                    : e.frame_number !== null && e.frame_number !== undefined
+                    ? `f.${e.frame_number}`
+                    : "—"}
                 </span>
                 <span className="log-text">
-                  <strong>P{e.person_id}</strong> {formatEvent(e)}
+                  <strong>{labelForId(e.person_id)}</strong> {formatEvent(e)}
                 </span>
               </div>
             ))

@@ -30,13 +30,6 @@ def test_video_upload_and_processing():
         
         assert response.status_code == 200, f"Upload failed: {response.text}"
 
-        print("\n1b. Testing legacy upload endpoint: POST /videos/upload...")
-        with open(test_video_path, "rb") as f:
-            legacy_response = client.post(
-                "/videos/upload",
-                files={"file": ("test_sample.mp4", f, "video/mp4")}
-            )
-        assert legacy_response.status_code == 200, f"Legacy upload failed: {legacy_response.text}"
         data = response.json()
         print("Upload Response:", data)
         

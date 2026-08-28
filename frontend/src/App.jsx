@@ -10,7 +10,7 @@ import { uploadVideo, connectProcessingStream } from "./api";
 export default function App() {
   const [file, setFile] = useState(null);
   const [videoUrl, setVideoUrl] = useState(null);
-  const [status, setStatus] = useState("empty"); // empty | ready | processing | completed | failed
+  const [status, setStatus] = useState("empty"); // empty | processing | completed | failed
   const [errorMsg, setErrorMsg] = useState(null);
   const [wsConnected, setWsConnected] = useState(false);
 
@@ -37,29 +37,32 @@ export default function App() {
     setEventsDetected(0);
   };
 
-  const handleFileSelected = useCallback((f) => {
+  // Upload + start processing happen the instant a file is picked/dropped -
+  // no separate "Start tracking" click. The video also autoplays (see
+  // VideoStage), so playback and AI processing kick off together, the same
+  // way the MJPEG reference starts the worker thread the moment /api/start
+  // is hit rather than waiting on a second user action.
+  const startProcessing = useCallback(async (f) => {
     closeStreamRef.current?.();
+    resetLiveState();
+
     setFile(f);
     setVideoUrl(URL.createObjectURL(f));
-    setStatus("ready");
-    setErrorMsg(null);
-    setWsConnected(false);
-    resetLiveState();
-  }, []);
-
-  const handleProcess = useCallback(async () => {
-    if (!file) return;
     setStatus("processing");
     setErrorMsg(null);
-    resetLiveState();
+    setWsConnected(false);
 
     try {
-      const response = await uploadVideo(file);
-      const jobId = response.session_id || response.job_id;
+      const uploadRes = await uploadVideo(f);
+      const jobId = uploadRes?.session_id || uploadRes?.job_id;
 
-      // Open the live results channel BEFORE (or right after) processing
-      // starts on the backend - the server buffers nothing, so if we
-      // connect late we simply miss earlier frames, same as a real live feed.
+      if (!jobId) {
+        throw new Error("Server response missing session_id");
+      }
+
+      // Open the live results channel right after upload - the server
+      // buffers nothing, so if we connect late we simply miss earlier
+      // frames, same as a real live feed.
       closeStreamRef.current = connectProcessingStream(jobId, {
         onOpen: () => setWsConnected(true),
 
@@ -79,13 +82,22 @@ export default function App() {
 
         onFrameResult: (msg) => {
           setLiveTracks(msg.persons ?? []);
-          setAiFrameInfo({ frameNumber: msg.frame_number });
+          setAiFrameInfo({
+            frameNumber: msg.frame_number,
+            timestamp: msg.timestamp,
+            progress: msg.progress,
+          });
           const current = msg.persons?.[0]?.zone ?? null;
           if (current) setActiveZone(current);
+
+          if (msg.persons && msg.persons.length > 0) {
+            setPersonsDetected((prev) => Math.max(prev, msg.persons.length));
+          }
         },
 
         onEvent: (msg) => {
           setEvents((prev) => [...prev, msg]);
+          setEventsDetected((prev) => prev + 1);
 
           if (msg.zone) {
             setVisitedZones((prev) => (prev.includes(msg.zone) ? prev : [...prev, msg.zone]));
@@ -107,7 +119,15 @@ export default function App() {
       setStatus("failed");
       setErrorMsg(err.message ?? "Could not reach the backend.");
     }
-  }, [file]);
+  }, []);
+
+  // "Replace video" and drag/drop both funnel through here.
+  const handleFileSelected = useCallback((f) => startProcessing(f), [startProcessing]);
+
+  // "Re-run" on a completed job re-uploads the same file and starts again.
+  const handleReRun = useCallback(() => {
+    if (file) startProcessing(file);
+  }, [file, startProcessing]);
 
   useEffect(() => () => closeStreamRef.current?.(), []);
 
@@ -134,7 +154,7 @@ export default function App() {
             fileName={file?.name}
             status={status}
             onFileSelected={handleFileSelected}
-            onProcess={handleProcess}
+            onReRun={handleReRun}
             liveTracks={liveTracks}
             aiFrameInfo={aiFrameInfo}
           />

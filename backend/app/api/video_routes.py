@@ -11,7 +11,7 @@ WS /api/v1/videos/{session_id}/stream
     Receive live AI processing results.
 """
 
-from filelock import asyncio
+import asyncio
 import shutil
 import uuid
 from pathlib import Path
@@ -107,6 +107,7 @@ async def upload_video(
     # -----------------------------
     SESSION_STORE[session_id] = {
         "session_id": session_id,
+        "job_id": session_id,
         "video_path": str(video_path),
 
         "status": "PROCESSING",
@@ -140,6 +141,7 @@ async def upload_video(
     # -----------------------------
     return {
         "session_id": session_id,
+        "job_id": session_id,
         "status": "PROCESSING",
         "message": "Video uploaded and processing started",
     }

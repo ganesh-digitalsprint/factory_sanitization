@@ -1,15 +1,14 @@
 import { useRef, useState, useCallback, useEffect } from "react";
-
-const ZONE_COLORS = ["#3e7c8c", "#6f8f45", "#d9a441", "#c4544a", "#8b6fb0"];
+import { colorForId, labelForId } from "../utils";
 
 export default function VideoStage({
   videoUrl,
   fileName,
-  status, // "empty" | "ready" | "processing" | "completed" | "failed"
+  status, // "empty" | "processing" | "completed" | "failed"
   onFileSelected,
-  onProcess,
+  onReRun,
   liveTracks = [], // [{track_id, bbox:[x1,y1,x2,y2], zone}] - raw pixel coords from the source video
-  aiFrameInfo = null, // {frameNumber} - how far the AI pipeline has actually gotten
+  aiFrameInfo = null, // {frameNumber, timestamp, progress} - how far the AI pipeline has actually gotten
 }) {
   const inputRef = useRef(null);
   const videoRef = useRef(null);
@@ -103,7 +102,7 @@ export default function VideoStage({
                 <path d="M17 9.5 22 7v10l-5-2.5" />
               </svg>
               <p className="dropzone-title">Drop a CCTV clip, or click to browse</p>
-              <p className="dropzone-sub">MP4 or MOV &middot; the feed will appear centered here</p>
+              <p className="dropzone-sub">MP4 or MOV &middot; playback and tracking start immediately</p>
               <input
                 ref={inputRef}
                 type="file"
@@ -117,32 +116,39 @@ export default function VideoStage({
               <video
                 ref={videoRef}
                 src={videoUrl}
-                controls={!isProcessing}
-                className="video-el"
+                controls
+                autoPlay
+                muted
+                playsInline
                 onLoadedMetadata={recomputeScale}
                 onTimeUpdate={(e) => setVideoTime(e.target.currentTime)}
+                className="video-el"
               />
 
-              {liveTracks.map((t) => (
-                <div
-                  key={t.track_id}
-                  className="track-box"
-                  style={{
-                    left: `${scale.offsetX + t.bbox[0] * scale.x}px`,
-                    top: `${scale.offsetY + t.bbox[1] * scale.y}px`,
-                    width: `${(t.bbox[2] - t.bbox[0]) * scale.x}px`,
-                    height: `${(t.bbox[3] - t.bbox[1]) * scale.y}px`,
-                    borderColor: ZONE_COLORS[t.track_id % ZONE_COLORS.length],
-                  }}
-                >
-                  <span
-                    className="track-label"
-                    style={{ background: ZONE_COLORS[t.track_id % ZONE_COLORS.length] }}
+              {liveTracks.map((t) => {
+                const trackColor = colorForId(t.track_id);
+                const trackLabel = labelForId(t.track_id);
+                return (
+                  <div
+                    key={t.track_id}
+                    className="track-box"
+                    style={{
+                      left: `${scale.offsetX + t.bbox[0] * scale.x}px`,
+                      top: `${scale.offsetY + t.bbox[1] * scale.y}px`,
+                      width: `${(t.bbox[2] - t.bbox[0]) * scale.x}px`,
+                      height: `${(t.bbox[3] - t.bbox[1]) * scale.y}px`,
+                      borderColor: trackColor,
+                    }}
                   >
-                    P{t.track_id} &middot; {t.zone ?? "—"}
-                  </span>
-                </div>
-              ))}
+                    <span
+                      className="track-label"
+                      style={{ background: trackColor }}
+                    >
+                      {trackLabel} &middot; {t.zone ?? "—"}
+                    </span>
+                  </div>
+                );
+              })}
 
               {isProcessing && (
                 <div className="processing-badge">
@@ -150,7 +156,9 @@ export default function VideoStage({
                   Tracking in progress
                   {aiFrameInfo?.frameNumber !== undefined && (
                     <span className="processing-badge-frame">
-                      &middot; AI at frame {aiFrameInfo.frameNumber}
+                      &middot; AI at f.{aiFrameInfo.frameNumber}
+                      {aiFrameInfo.timestamp !== undefined ? ` (${aiFrameInfo.timestamp}s)` : ""}
+                      {aiFrameInfo.progress !== undefined ? ` [${aiFrameInfo.progress}%]` : ""}
                       {" "}
                       (video at {videoTime.toFixed(1)}s)
                     </span>
@@ -175,7 +183,7 @@ export default function VideoStage({
         </div>
 
         <div className="stage-actions">
-          {!isEmpty && status !== "processing" && status !== "completed" && (
+          {!isEmpty && status !== "processing" && (
             <button className="btn btn-ghost" onClick={() => inputRef.current?.click()}>
               Replace video
             </button>
@@ -187,13 +195,22 @@ export default function VideoStage({
             hidden
             onChange={(e) => e.target.files?.[0] && onFileSelected(e.target.files[0])}
           />
-          <button
-            className="btn btn-primary"
-            disabled={isEmpty || isProcessing}
-            onClick={onProcess}
-          >
-            {isProcessing ? "Processing…" : status === "completed" ? "Re-run" : "Start tracking"}
-          </button>
+          {status === "processing" && (
+            <span className="stage-status-inline">
+              <span className="pulse-dot" />
+              Processing…
+            </span>
+          )}
+          {status === "completed" && (
+            <button className="btn btn-primary" onClick={onReRun}>
+              Re-run
+            </button>
+          )}
+          {status === "failed" && (
+            <button className="btn btn-primary" onClick={onReRun}>
+              Try again
+            </button>
+          )}
         </div>
       </div>
     </div>
