@@ -24,8 +24,7 @@ from app.services.zone_engine import ZoneEngine
 from app.services.event_engine import EventEngine
 from app.services.tracker_service import RealTrackerService, MockTrackerService
 from app.services.connection_manager import manager
-from app.database.database import SessionLocal
-from app.models.event import Event
+from app.services.db_writer import enqueue_event
 
 logger = logging.getLogger(__name__)
 
@@ -82,9 +81,9 @@ def process_video(session_id: str, video_path: str, use_mock_tracker: bool = Tru
     })
 
     zone_engine = ZoneEngine.from_json(ZONES_PATH)
+    print(f"zone_engine got triggered with zones: {zone_engine.zones}")
     event_engine = EventEngine()
 
-    db = SessionLocal()
     seen_person_ids = set()
     events_written = 0
     processed_frames_count = 0
@@ -93,6 +92,7 @@ def process_video(session_id: str, video_path: str, use_mock_tracker: bool = Tru
     try:
         if use_mock_tracker:
             tracker = MockTrackerService()
+            print(f"tracker got triggered for mock tracker with video path: {video_path}")
             frame_numbers = sorted(tracker.mock_tracks_per_frame.keys())
             if frame_numbers and total_frames <= 100:
                 total_frames = max(frame_numbers[-1] + 1, 100)
@@ -118,6 +118,13 @@ def process_video(session_id: str, video_path: str, use_mock_tracker: bool = Tru
                 seen_person_ids.add(person_id)
 
                 zone = zone_engine.get_zone(bbox)
+
+                print(
+                    f"[ZONE] frame={frame_number} "
+                    f"person={person_id} "
+                    f"bbox={bbox} "
+                    f"zone={zone}"
+                )
                 persons_payload.append({
                     "track_id": person_id,
                     "bbox": bbox,
@@ -132,18 +139,23 @@ def process_video(session_id: str, video_path: str, use_mock_tracker: bool = Tru
                     frame_number=frame_number,
                     timestamp=timestamp,
                 )
+                print(
+                    f"[EVENT ENGINE] frame={frame_number} "
+                    f"person={person_id} "
+                    f"zone={zone} "
+                    f"events={events}"
+                )
 
                 for event in events:
-                    db_event = Event(
-                        job_id=session_id,
-                        person_id=str(event["person_id"]),
-                        event_type=event["event"],
-                        zone=event.get("to_zone") or event.get("zone"),
-                        frame_number=event.get("frame_number"),
-                        status=event.get("status", "OK"),
-                    )
-                    db.add(db_event)
-                    db.flush()
+                    enqueue_event({
+                        "job_id": session_id,
+                        "person_id": str(event["person_id"]),
+                        "event_type": event["event"],
+                        "zone": event.get("to_zone") or event.get("zone"),
+                        "frame_number": event.get("frame_number"),
+                        "status": event.get("status", "OK"),
+                        "confidence": track.get("confidence", 0.90),
+                    })
                     events_written += 1
 
                     # IMPORTANT EVENTS: Always send immediately over WebSocket
@@ -188,8 +200,6 @@ def process_video(session_id: str, video_path: str, use_mock_tracker: bool = Tru
             if use_mock_tracker:
                 time.sleep(FRAME_DELAY_SECONDS)
 
-        db.commit()
-
         total_elapsed = time.time() - start_time
         processing_fps = round(processed_frames_count / total_elapsed, 2) if total_elapsed > 0 else 0
         logger.info(
@@ -212,7 +222,6 @@ def process_video(session_id: str, video_path: str, use_mock_tracker: bool = Tru
         })
 
     except Exception as exc:
-        db.rollback()
         logger.exception(f"[Session {session_id}] Processing failed: {exc}")
         SESSION_STORE[session_id].update({
             "status": "FAILED",
@@ -224,8 +233,5 @@ def process_video(session_id: str, video_path: str, use_mock_tracker: bool = Tru
             "message": str(exc),
         })
         raise
-
-    finally:
-        db.close()
 
  

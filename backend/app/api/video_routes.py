@@ -1,18 +1,12 @@
 """
 video_routes.py
 
-POST /api/v1/videos/upload
-    Upload full video and immediately start background processing.
-
-GET /api/v1/videos/{session_id}
-    Get current processing status.
-
-WS /api/v1/videos/{session_id}/stream
-    Receive live AI processing results.
+POST /videos/upload   - upload a video, kick off processing immediately
+GET  /videos/{job_id} - check the status of a processing job
 """
 
-import asyncio
 import shutil
+import threading
 import uuid
 from pathlib import Path
 
@@ -20,173 +14,76 @@ from fastapi import (
     APIRouter,
     UploadFile,
     File,
-    BackgroundTasks,
+    Form,
     HTTPException,
     WebSocket,
     WebSocketDisconnect,
 )
 
-from app.services.video_processor import process_video, SESSION_STORE
+from app.services.video_processor import process_video, JOB_STATUS
 from app.services.connection_manager import manager
-
 
 router = APIRouter(prefix="/videos", tags=["videos"])
 
-UPLOAD_DIR = (
-    Path(__file__).resolve().parent.parent.parent / "uploads"
-)
-
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+UPLOAD_DIR = Path(__file__).resolve().parent.parent.parent / "uploads"
+UPLOAD_DIR.mkdir(exist_ok=True)
 
 
 @router.post("/upload")
-async def upload_video(
-    background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
-):
+async def upload_video(file: UploadFile = File(...), use_mock_tracker: bool = Form(False)):
     """
-    Upload the complete video file.
-
-    The video is saved first, then a processing session is
-    created and processing starts immediately in the background.
-
-    The API does NOT wait for the entire video processing to finish.
+    use_mock_tracker defaults to False now that RealTrackerService (YOLO +
+    ByteTrack + Re-ID) is wired up - real tracking runs unless a caller
+    explicitly opts into the 3-frame demo mock (e.g. for a quick UI check
+    without a GPU/model weights available). Previously this was hardcoded
+    to True, which meant every upload silently used mock data regardless
+    of what was in tracker_service.py - that's the bug you were seeing.
     """
+    job_id = str(uuid.uuid4())
+    video_path = UPLOAD_DIR / f"{job_id}_{file.filename}"
+    
 
-    # -----------------------------
-    # 1. Validate file
-    # -----------------------------
-    if not file.filename:
-        raise HTTPException(
-            status_code=400,
-            detail="Filename missing in uploaded video file",
-        )
+    with open(video_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
 
-    # Optional basic validation
-    allowed_extensions = {
-        ".mp4",
-        ".avi",
-        ".mov",
-        ".mkv",
-        ".webm",
-    }
+    JOB_STATUS[job_id] = {"status": "PROCESSING", "persons_detected": 0, "events_detected": 0}
 
-    extension = Path(file.filename).suffix.lower()
-
-    if extension not in allowed_extensions:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported video format: {extension}",
-        )
-
-    # -----------------------------
-    # 2. Generate session ID
-    # -----------------------------
-    session_id = str(uuid.uuid4())
-
-    video_path = (
-        UPLOAD_DIR /
-        f"{session_id}{extension}"
+    # Started directly (not via FastAPI's BackgroundTasks) so it begins
+    # running immediately, concurrently with this request finishing - not
+    # after the HTTP response is sent.
+    thread = threading.Thread(
+        target=process_video,
+        args=(job_id, str(video_path), use_mock_tracker),
+        daemon=True,
     )
+    thread.start()
 
-    # -----------------------------
-    # 3. Save complete uploaded video
-    # -----------------------------
-    try:
-        with open(video_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-
-    except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to save video: {str(exc)}",
-        )
-
-    # -----------------------------
-    # 4. Create processing session
-    # -----------------------------
-    SESSION_STORE[session_id] = {
-        "session_id": session_id,
-        "job_id": session_id,
-        "video_path": str(video_path),
-
-        "status": "PROCESSING",
-
-        "progress": 0.0,
-
-        "current_frame": 0,
-        "current_timestamp": 0.0,
-
-        "total_frames": 0,
-        "fps": 0.0,
-
-        "processing_fps": 0.0,
-
-        "persons_detected": 0,
-        "events_detected": 0,
-    }
-
-    # -----------------------------
-    # 5. Start processing immediately
-    # -----------------------------
-    background_tasks.add_task(
-        process_video,
-        session_id,
-        str(video_path),
-        True,
-    )
-
-    # -----------------------------
-    # 6. Return immediately
-    # -----------------------------
-    return {
-        "session_id": session_id,
-        "job_id": session_id,
-        "status": "PROCESSING",
-        "message": "Video uploaded and processing started",
-    }
+    return {"job_id": job_id, "use_mock_tracker": use_mock_tracker, **JOB_STATUS[job_id]}
 
 
-@router.get("/{session_id}")
-async def get_session_status(session_id: str):
-
-    session = SESSION_STORE.get(session_id)
-
-    if session is None:
-        raise HTTPException(
-            status_code=404,
-            detail="session_id not found",
-        )
-
-    return session
+@router.get("/{job_id}")
+async def get_job_status(job_id: str):
+    status = JOB_STATUS.get(job_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="job_id not found")
+    return {"job_id": job_id, **status}
 
 
 @router.websocket("/{session_id}/stream")
-async def video_stream(
-    websocket: WebSocket,
-    session_id: str,
-):
-    session = SESSION_STORE.get(session_id)
-
-    if session is None:
-        await websocket.close(code=1008)
-        return
-
+async def video_stream(websocket: WebSocket, session_id: str):
+    """
+    Live channel for one processing session. The video itself is NOT sent
+    over this socket - React plays the uploaded file directly via <video>.
+    This only carries AI results: track_id + bbox + zone per frame, plus
+    zone-change / missed-step events, as process_video() produces them.
+    """
     await manager.connect(session_id, websocket)
+    await websocket.send_json({"type": "test", "message": "WebSocket connected"})
 
     try:
-        await websocket.send_json({
-            "type": "processing_started",
-            "session_id": session_id,
-            "status": session.get("status", "PROCESSING"),
-        })
-
-        # Keep connection open while processing
+        # We don't expect the client to send anything meaningful back, but
+        # we still need to await something to detect disconnects promptly.
         while True:
-            await asyncio.sleep(1)
-
+            await websocket.receive_text()
     except WebSocketDisconnect:
-        manager.disconnect(session_id, websocket)
-
-    except Exception:
         manager.disconnect(session_id, websocket)

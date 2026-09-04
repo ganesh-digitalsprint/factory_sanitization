@@ -483,6 +483,7 @@ class RealTrackerService:
                 continue
             if not is_valid_detection((x1, y1, x2, y2), confidence, self.filter_config):
                 continue
+            
 
             xyxy.append([x1, y1, x2, y2])
             confidences.append(confidence)
