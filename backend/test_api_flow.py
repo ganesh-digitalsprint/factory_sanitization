@@ -64,8 +64,6 @@ def test_video_upload_and_processing():
             ws_data = websocket.receive_json()
             print("Received initial WS message:", ws_data)
             assert ws_data["type"] == "test"
-
-
             
         print("\n[SUCCESS] End-to-End API & Background Processing tests passed successfully!")
         
